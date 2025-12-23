@@ -4,7 +4,7 @@ import { useState, useRef, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { X, Save, ArrowLeft, Loader2, UploadCloud, ImageIcon, Trash2 } from "lucide-react";
+import { X, Save, ArrowLeft, Loader2, UploadCloud, ImageIcon, Trash2, Github, Globe } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
@@ -29,11 +29,16 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
+// Schema de Validação
 const formSchema = z.object({
   title: z.string().min(2, "Título muito curto."),
   description: z.string().min(10, "Descrição muito curta."),
-  imageUrl: z.string().url("A imagem é obrigatória."), // O Zod valida a URL que virá do Blob
-  link: z.string().url("URL do projeto inválida."),
+  imageUrl: z.string().url("A imagem é obrigatória."),
+  
+  // Links
+  link: z.string().url("URL do repositório inválida."), // Repositório
+  deployUrl: z.string().url("URL de deploy inválida."), // <--- NOVO CAMPO
+  
   color: z.string().regex(/^#([0-9A-F]{3}){1,2}$/i, "Código Hex inválido."),
   tags: z.array(z.string()).min(1, "Adicione pelo menos uma tag."),
 });
@@ -44,8 +49,8 @@ export default function NewProjectPage() {
   
   // States
   const [tagInput, setTagInput] = useState("");
-  const [isUploading, setIsUploading] = useState(false); // Estado específico para o upload da imagem
-  const [isPending, startTransition] = useTransition(); // Estado para o salvamento no banco
+  const [isUploading, setIsUploading] = useState(false);
+  const [isPending, startTransition] = useTransition();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -54,12 +59,13 @@ export default function NewProjectPage() {
       description: "",
       imageUrl: "",
       link: "",
+      deployUrl: "", // <--- Inicializando novo campo
       color: "#3b82f6",
       tags: [],
     },
   });
 
-  // --- LÓGICA DE UPLOAD DE IMAGEM ---
+  // --- UPLOAD DE IMAGEM ---
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     if (!event.target.files || event.target.files.length === 0) {
       return;
@@ -69,13 +75,11 @@ export default function NewProjectPage() {
     setIsUploading(true);
 
     try {
-      // Faz o upload direto para o Vercel Blob (Client-side upload)
       const newBlob = await upload(file.name, file, {
         access: 'public',
-        handleUploadUrl: '/api/upload', // Aponta para a rota que criamos
+        handleUploadUrl: '/api/upload',
       });
 
-      // Se der certo, coloca a URL no formulário
       form.setValue("imageUrl", newBlob.url);
       form.clearErrors("imageUrl");
     } catch (error) {
@@ -88,21 +92,19 @@ export default function NewProjectPage() {
 
   const removeImage = () => {
     form.setValue("imageUrl", "");
-    // Nota: Em produção, idealmente chamaríamos uma server action para deletar o blob antigo também
   };
 
-  // --- LÓGICA DE SUBMIT ---
+  // --- SUBMIT ---
   function onSubmit(values: z.infer<typeof formSchema>) {
     startTransition(async () => {
       const result = await createProject(null, values);
       if (result && result.error) {
         alert(result.error);
       }
-      // Sucesso = Redirect automático pelo Server Action
     });
   }
 
-  // --- LÓGICA DE TAGS ---
+  // --- TAGS LOGIC ---
   const addTag = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
       e.preventDefault();
@@ -126,7 +128,7 @@ export default function NewProjectPage() {
       
       {/* Header */}
       <div className="flex items-center gap-4 mb-8">
-        <Link href="/admin" className="p-2 rounded-full hover:bg-white/5 text-zinc-400 hover:text-white transition-colors">
+        <Link href="/admin/projects" className="p-2 rounded-full hover:bg-white/5 text-zinc-400 hover:text-white transition-colors">
             <ArrowLeft size={20} />
         </Link>
         <div>
@@ -175,7 +177,7 @@ export default function NewProjectPage() {
                 />
             </div>
 
-            {/* GRUPO 2: Upload de Imagem (A Mágica do Blob) */}
+            {/* GRUPO 2: Upload de Imagem */}
             <div className="p-6 rounded-lg border border-dashed border-white/10 bg-zinc-950/50">
                 <FormField
                   control={form.control}
@@ -184,7 +186,6 @@ export default function NewProjectPage() {
                     <FormItem>
                       <FormLabel className="text-zinc-300 mb-2 block">Capa do Projeto</FormLabel>
                       
-                      {/* Estado: Sem Imagem (Botão de Upload) */}
                       {!field.value ? (
                         <div 
                           onClick={() => inputFileRef.current?.click()}
@@ -209,7 +210,6 @@ export default function NewProjectPage() {
                                </div>
                              </>
                            )}
-                           {/* Input File Escondido */}
                            <input 
                               type="file" 
                               ref={inputFileRef}
@@ -220,7 +220,6 @@ export default function NewProjectPage() {
                            />
                         </div>
                       ) : (
-                        // Estado: Com Imagem (Preview)
                         <div className="relative h-64 w-full rounded-lg overflow-hidden border border-white/10 group">
                            <Image 
                              src={field.value} 
@@ -228,7 +227,6 @@ export default function NewProjectPage() {
                              fill 
                              className="object-cover"
                            />
-                           {/* Overlay de Ação */}
                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4">
                               <Button 
                                 type="button" 
@@ -248,31 +246,56 @@ export default function NewProjectPage() {
                 />
             </div>
 
-            {/* GRUPO 3: Link e Cor */}
+            {/* GRUPO 3: Links (Repositorio + Deploy) */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                
+                {/* Repositório */}
                 <FormField
                   control={form.control}
                   name="link"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-zinc-300">Link do Repositório/Demo</FormLabel>
+                      <FormLabel className="text-zinc-300 flex items-center gap-2">
+                        <Github size={16} /> Repositório (Git)
+                      </FormLabel>
                       <FormControl>
-                        <Input disabled={isPending} placeholder="https://github.com/..." className="bg-zinc-950 border-white/10 text-white focus-visible:ring-blue-500" {...field} />
+                        <Input disabled={isPending} placeholder="https://github.com/usuario/projeto" className="bg-zinc-950 border-white/10 text-white focus-visible:ring-blue-500" {...field} />
                       </FormControl>
                       <FormMessage className="text-red-400" />
                     </FormItem>
                   )}
                 />
 
+                {/* NOVO: Deploy URL */}
+                <FormField
+                  control={form.control}
+                  name="deployUrl"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-zinc-300 flex items-center gap-2">
+                        <Globe size={16} /> URL do Deploy (Live)
+                      </FormLabel>
+                      <FormControl>
+                        <Input disabled={isPending} placeholder="https://meu-projeto.vercel.app" className="bg-zinc-950 border-white/10 text-white focus-visible:ring-blue-500" {...field} />
+                      </FormControl>
+                      <FormMessage className="text-red-400" />
+                    </FormItem>
+                  )}
+                />
+            </div>
+
+            {/* GRUPO 4: Visual & Tags */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                 {/* Cor */}
                  <FormField
                   control={form.control}
                   name="color"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-zinc-300">Cor Principal (Brand Color)</FormLabel>
+                      <FormLabel className="text-zinc-300">Cor de Destaque</FormLabel>
                       <div className="flex gap-3">
                           <div 
-                            className="w-10 h-10 rounded-md border border-white/10 shadow-inner shrink-0"
+                            className="w-10 h-10 rounded-md border border-white/10 shadow-inner shrink-0 transition-colors"
                             style={{ backgroundColor: field.value }} 
                           />
                           <FormControl>
@@ -283,52 +306,52 @@ export default function NewProjectPage() {
                     </FormItem>
                   )}
                 />
-            </div>
 
-            {/* GRUPO 4: Tags */}
-            <FormField
-              control={form.control}
-              name="tags"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-zinc-300">Tech Stack</FormLabel>
-                  <FormControl>
-                    <div className="space-y-3">
-                        <Input 
-                            disabled={isPending}
-                            placeholder="Digite a tecnologia e pressione Enter (ex: Next.js)..." 
-                            value={tagInput}
-                            onChange={(e) => setTagInput(e.target.value)}
-                            onKeyDown={addTag}
-                            className="bg-zinc-950 border-white/10 text-white focus-visible:ring-blue-500"
-                        />
-                        
-                        <div className="flex flex-wrap gap-2 min-h-[40px] p-4 bg-zinc-950/50 rounded-lg border border-white/5">
-                            {field.value.map((tag) => (
-                                <span key={tag} className="inline-flex items-center gap-1 pl-3 pr-2 py-1 rounded-md bg-zinc-800 text-zinc-200 text-sm border border-white/10 animate-in fade-in zoom-in duration-200">
-                                    {tag}
-                                    <button 
-                                        type="button" 
-                                        onClick={() => removeTag(tag)}
-                                        className="p-1 hover:text-red-400 hover:bg-white/5 rounded-full transition-colors"
-                                        disabled={isPending}
-                                    >
-                                        <X size={14} />
-                                    </button>
-                                </span>
-                            ))}
-                            {field.value.length === 0 && (
-                                <span className="text-sm text-zinc-600 flex items-center gap-2">
-                                  <ImageIcon size={16} /> Nenhuma tecnologia adicionada.
-                                </span>
-                            )}
+                {/* Tags */}
+                <FormField
+                  control={form.control}
+                  name="tags"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-zinc-300">Tech Stack</FormLabel>
+                      <FormControl>
+                        <div className="space-y-3">
+                            <Input 
+                                disabled={isPending}
+                                placeholder="Tecnologia + Enter..." 
+                                value={tagInput}
+                                onChange={(e) => setTagInput(e.target.value)}
+                                onKeyDown={addTag}
+                                className="bg-zinc-950 border-white/10 text-white focus-visible:ring-blue-500"
+                            />
+                            
+                            <div className="flex flex-wrap gap-2 min-h-[40px] p-4 bg-zinc-950/50 rounded-lg border border-white/5">
+                                {field.value.map((tag) => (
+                                    <span key={tag} className="inline-flex items-center gap-1 pl-3 pr-2 py-1 rounded-md bg-zinc-800 text-zinc-200 text-sm border border-white/10 animate-in fade-in zoom-in duration-200">
+                                        {tag}
+                                        <button 
+                                            type="button" 
+                                            onClick={() => removeTag(tag)}
+                                            className="p-1 hover:text-red-400 hover:bg-white/5 rounded-full transition-colors"
+                                            disabled={isPending}
+                                        >
+                                            <X size={14} />
+                                        </button>
+                                    </span>
+                                ))}
+                                {field.value.length === 0 && (
+                                    <span className="text-sm text-zinc-600 flex items-center gap-2">
+                                      <ImageIcon size={16} /> Nenhuma tecnologia adicionada.
+                                    </span>
+                                )}
+                            </div>
                         </div>
-                    </div>
-                  </FormControl>
-                  <FormMessage className="text-red-400" />
-                </FormItem>
-              )}
-            />
+                      </FormControl>
+                      <FormMessage className="text-red-400" />
+                    </FormItem>
+                  )}
+                />
+            </div>
 
             {/* Footer de Ações */}
             <div className="pt-6 border-t border-white/5 flex justify-end gap-4">

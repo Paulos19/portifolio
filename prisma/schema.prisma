@@ -15,6 +15,7 @@ model Project {
   link        String
   color       String
   tags        String[] // Array nativo do Postgres
+  deployUrl   String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

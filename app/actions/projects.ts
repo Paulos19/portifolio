@@ -12,6 +12,7 @@ const projectSchema = z.object({
   imageUrl: z.string().url(),
   link: z.string().url(),
   color: z.string().regex(/^#([0-9A-F]{3}){1,2}$/i),
+  deployUrl: z.string().url(),
   tags: z.array(z.string()).min(1),
 });
 
@@ -34,6 +35,7 @@ export async function createProject(prevState: any, formData: z.infer<typeof pro
         imageUrl: validatedFields.data.imageUrl,
         link: validatedFields.data.link,
         color: validatedFields.data.color,
+        deployUrl: validatedFields.data.deployUrl,
         tags: validatedFields.data.tags,
       },
     });
@@ -53,4 +55,21 @@ export async function createProject(prevState: any, formData: z.infer<typeof pro
 
   // 4. Redirecionar (fora do try-catch é uma boa prática no Next.js)
   redirect("/admin/projects");
+}
+
+export async function deleteProject(id: string) {
+  try {
+    await prisma.project.delete({
+      where: {
+        id,
+      },
+    });
+
+    revalidatePath("/admin/projects");
+    revalidatePath("/"); // Atualiza também a home pública
+    return { success: true };
+  } catch (error) {
+    console.error("Erro ao apagar projeto:", error);
+    return { error: "Não foi possível apagar o projeto." };
+  }
 }
